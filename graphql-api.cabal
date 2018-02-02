@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 6aa09d512e2d1e86eeb059e1273005913985418db5c8f94b7361af87744e6bae
+-- hash: e4fd2096e35b0d5bfd0808c695c7af64baaca6c63802470a774b3de65073e972
 
 name:           graphql-api
 version:        0.2.0
@@ -36,6 +36,7 @@ library
     , containers
     , exceptions
     , ghc-prim
+    , mtl
     , protolude >=0.2
     , scientific
     , text
@@ -75,6 +76,7 @@ test-suite graphql-api-doctests
     , base >=4.9 && <5
     , doctest
     , exceptions
+    , mtl
     , protolude >=0.2
     , transformers
   other-modules:
@@ -110,6 +112,7 @@ test-suite graphql-api-tests
     , exceptions
     , graphql-api
     , hspec
+    , mtl
     , protolude >=0.2
     , raw-strings-qq
     , tasty
@@ -144,6 +147,7 @@ benchmark criterion
     , criterion
     , exceptions
     , graphql-api
+    , mtl
     , protolude >=0.2
     , transformers
   other-modules:

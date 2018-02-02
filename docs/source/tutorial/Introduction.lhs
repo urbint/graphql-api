@@ -16,7 +16,7 @@ import System.Random
 
 import GraphQL
 import GraphQL.API (Object, Field, Argument, (:>), Union)
-import GraphQL.Resolver (Handler, (:<>)(..), unionValue)
+import GraphQL.Resolver (Handler, (:<>)(..), unionValue, AsGraphQLError(..))
 ```
 
 ## A simple GraphQL service
@@ -96,7 +96,7 @@ are `Handler` values.
 Here's a `Handler` for `Hello`:
 
 ```haskell
-hello :: Handler IO Hello
+hello :: (AsGraphQLError e, MonadError e m) => Handler m Hello
 hello = pure greeting
   where
     greeting who = pure ("Hello " <> who <> "!")
@@ -129,7 +129,7 @@ would like.
 Defining a service isn't much point unless you can query. Here's how:
 
 ```haskell
-queryHello :: IO Response
+queryHello :: (AsGraphQLError e, MonadError e m) => m Response
 queryHello = interpretAnonymousQuery @Hello hello "{ greeting(who: \"mort\") }"
 ```
 

@@ -1,5 +1,7 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DeriveGeneric #-}
 
 module Examples.InputObject where
@@ -7,7 +9,7 @@ import Protolude hiding (Enum)
 
 import GraphQL
 import GraphQL.API
-import GraphQL.Resolver (Handler, Defaultable(..))
+import GraphQL.Resolver (Handler, Defaultable(..), ResolverError(..), AsGraphQLError(..))
 import GraphQL.Value.FromValue (FromValue)
 
 data DogStuff = DogStuff { toy :: Text, likesTreats :: Bool } deriving (Show, Generic)
@@ -21,10 +23,16 @@ instance Defaultable DogStuff where
 type Query = Object "Query" '[]
   '[ Argument "dogStuff" DogStuff :> Field "description" Text ]
 
-root :: Handler IO Query
+newtype CustomError
+  = UnknownUserID Text
+
+instance AsGraphQLError CustomError where
+  asGraphQLError (UnknownUserID _) = HandlerError "Unknown UserID" 404
+
+root :: (MonadError CustomError m) => Handler m Query
 root = pure description
 
-description :: DogStuff -> Handler IO Text
+description :: (AsGraphQLError e, MonadError e m) => DogStuff -> Handler m Text
 description (DogStuff toy likesTreats)
   | likesTreats = pure $ "likes treats and their favorite toy is a " <> toy
   | otherwise = pure $ "their favorite toy is a " <> toy
@@ -42,5 +50,8 @@ description (DogStuff toy likesTreats)
 -- >>> response <- example "{ description }"
 -- >>> putStrLn $ encode $ toValue response
 -- {"data":{"description":"their favorite toy is a shoe"}}
-example :: Text -> IO Response
-example = interpretAnonymousQuery @Query root
+example :: Monad m => Text -> m Response
+example query = do
+  Right res <- runExceptT $ interpretAnonymousQuery @Query root query
+
+  pure res

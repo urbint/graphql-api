@@ -3,6 +3,6 @@ resolver: nightly-2017-01-25
 packages:
   - "."
   - "./docs/source/tutorial"
-  - "./graphql-wai"
+  # - "./graphql-wai"
 
 extra-deps: [protolude-0.2]
