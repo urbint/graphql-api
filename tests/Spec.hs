@@ -14,6 +14,7 @@ import qualified SchemaTests
 import qualified ValidationTests
 import qualified ValueTests
 import qualified EnumTests ()
+import qualified IntrospectionTests
 
 -- import examples to ensure they compile
 import Examples.InputObject ()
@@ -32,4 +33,5 @@ main = do
       , SchemaTests.tests
       , ValidationTests.tests
       , ValueTests.tests
+      , IntrospectionTests.tests
       ]

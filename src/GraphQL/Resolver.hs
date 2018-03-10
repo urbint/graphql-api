@@ -422,6 +422,7 @@ instance forall typeName interfaces fields e m.
          , RunFields m (RunFieldsType m fields)
          , API.HasObjectDefinition (API.Object typeName interfaces fields)
          , MonadError e m
+         , KnownSymbol typeName
          ) => HasResolver e m (API.Object typeName interfaces fields) where
   type Handler m (API.Object typeName interfaces fields) = m (RunFieldsHandler m (RunFieldsType m fields))
 
@@ -434,11 +435,15 @@ instance forall typeName interfaces fields e m.
         -- This (and other places, including field resolvers) is where user
         -- code can do things like look up something in a database.
         handler <- mHandler
-        r <- traverse (runFields @m @(RunFieldsType m fields) handler) ss
-        let (Result errs obj)  = GValue.objectFromOrderedMap . OrderedMap.catMaybes <$> sequenceA r
+        let (typename, objSelection) = OrderedMap.partition (\_ v -> getName v == "__typename") ss
+        r <- traverse (runFields @m @(RunFieldsType m fields) handler) objSelection
+        let (Result errs obj)  = GValue.objectFromOrderedMap . addTypenameIfRequested typename . OrderedMap.catMaybes <$> sequenceA r
         pure (Result errs (GValue.ValueObject obj))
 
     where
+      addTypenameIfRequested om
+        | null om   = identity
+        | otherwise = OrderedMap.insert "__typename" . toValue $ symbolText @typeName
       getSelectionSet = do
         defn <- first SchemaError $ API.getDefinition @(API.Object typeName interfaces fields)
         -- Fields of a selection set may be behind "type conditions", due to
