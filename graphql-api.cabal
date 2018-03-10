@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: e4fd2096e35b0d5bfd0808c695c7af64baaca6c63802470a774b3de65073e972
+-- hash: 8695559b84eae41fcf8dcf2f321f5988d41742f787d96dcb8dbb0e005807219b
 
 name:           graphql-api
 version:        0.2.0
@@ -86,6 +86,7 @@ test-suite graphql-api-doctests
       Examples.InputObject
       Examples.UnionExample
       ExampleSchema
+      IntrospectionTests
       OrderedMapTests
       ResolverTests
       SchemaTests
@@ -126,6 +127,7 @@ test-suite graphql-api-tests
       Examples.InputObject
       Examples.UnionExample
       ExampleSchema
+      IntrospectionTests
       OrderedMapTests
       ResolverTests
       SchemaTests
