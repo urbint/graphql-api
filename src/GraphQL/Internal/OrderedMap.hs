@@ -1,4 +1,5 @@
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RankNTypes   #-}
+{-# LANGUAGE BangPatterns #-}
 -- | Data structure for mapping keys to values while preserving order of appearance.
 --
 -- There are many cases in GraphQL where we want to have a map from names to
@@ -36,8 +37,13 @@ module GraphQL.Internal.OrderedMap
   , orderedMap
   -- * Querying
   , lookup
+  , member
+  , GraphQL.Internal.OrderedMap.null
   -- * Filtering
   , GraphQL.Internal.OrderedMap.catMaybes
+  , partition
+  -- * Construction
+  , insert
   -- * Combine
   -- ** Union
   , unions
@@ -193,3 +199,26 @@ orderedMap entries
   | otherwise = Nothing
   where
     ks = map fst entries
+
+insert :: (Ord key) => key -> value -> OrderedMap key value -> OrderedMap key value
+insert k v (OrderedMap ks m) = OrderedMap (k : ks) (Map.insert k v m)
+
+partition :: (Ord key)
+          => (key -> value -> Bool)
+          -> OrderedMap key value
+          -> (OrderedMap key value, OrderedMap key value)
+partition p om = go om (empty, empty)
+  where
+    go (OrderedMap [] _) !res = res
+    go (OrderedMap (k : ks) m) !(trues, falses) =
+      let v = m Map.! k
+      in go (OrderedMap ks m) $
+         if p k v
+         then (insert k v trues, falses)
+         else (trues, insert k v falses)
+
+member :: (Ord key) => key -> OrderedMap key value -> Bool
+member k (OrderedMap _ m) = Map.member k m
+
+null :: OrderedMap key value -> Bool
+null = Protolude.null . keys
