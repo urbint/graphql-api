@@ -24,6 +24,7 @@ dependencies:
   - exceptions
   - transformers
   - attoparsec
+  - mtl
 
 library:
   source-dirs: src

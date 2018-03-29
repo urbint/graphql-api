@@ -1,3 +1,4 @@
+{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -11,6 +12,7 @@
 {-# LANGUAGE TypeFamilyDependencies #-} -- nicer type errors in some cases
 {-# LANGUAGE TypeInType #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-} -- for TypeError
 
 module GraphQL.Resolver
@@ -20,7 +22,10 @@ module GraphQL.Resolver
   , Defaultable(..)
   , Result(..)
   , unionValue
+  , throwE
+  , AsGraphQLError(..)
   ) where
+
 
 -- TODO (probably incomplete, the spec is large)
 -- - input objects - I'm not super clear from the spec on how
@@ -39,6 +44,8 @@ import GHC.Types (Type)
 import qualified GHC.Exts (Any)
 import Unsafe.Coerce (unsafeCoerce)
 
+import Control.Monad.Error.Class (catchError, MonadError)
+
 import GraphQL.API
   ( (:>)
   , HasAnnotatedType(..)
@@ -54,7 +61,7 @@ import GraphQL.Value.FromValue (FromValue(..))
 import GraphQL.Value.ToValue (ToValue(..))
 import GraphQL.Internal.Name (Name, NameError(..), HasName(..), nameFromSymbol)
 import qualified GraphQL.Internal.OrderedMap as OrderedMap
-import GraphQL.Internal.Output (GraphQLError(..))
+import GraphQL.Internal.Output (GraphQLError(..), Error(..))
 import GraphQL.Internal.Validation
   ( SelectionSetByType
   , SelectionSet(..)
@@ -80,6 +87,10 @@ data ResolverError
   | SubSelectionOnLeaf (SelectionSetByType Value)
   -- | Tried to treat an object as a leaf.
   | MissingSelectionSet
+  -- | User-defined Handler Error
+  | HandlerError Text Int32
+  -- | Should never occur, but incase it does
+  | UncaughtHandlerError
   deriving (Show, Eq)
 
 instance GraphQLError ResolverError where
@@ -97,6 +108,24 @@ instance GraphQLError ResolverError where
     "Tried to get values within leaf field: " <> show ss
   formatError MissingSelectionSet =
     "Tried to treat object as if it were leaf field."
+
+  formatError (HandlerError text _) = text
+  formatError UncaughtHandlerError =
+    "UncaughtHandlerError! There was a problem catching an error thrown in a handler."
+
+  toError e =
+    case e of
+        (InvalidValue _ _) -> Error (formatError e) [] 400
+        MissingSelectionSet -> Error (formatError e) [] 400
+        (HandlerError _ status)-> Error (formatError e) [] status
+        _ -> Error (formatError e) [] 500
+
+
+class AsGraphQLError e where
+  asGraphQLError :: e -> ResolverError
+
+instance AsGraphQLError ResolverError where
+  asGraphQLError err = err
 
 -- | Object field separation operator.
 --
@@ -142,7 +171,8 @@ instance Applicative Result where
 ok :: Value -> Result Value
 ok = pure
 
-class HasResolver m a where
+
+class (AsGraphQLError e, MonadError e m) => HasResolver e m a | m -> e where
   type Handler m a
   resolve :: Handler m a -> Maybe (SelectionSetByType Value) -> m (Result Value)
 
@@ -179,44 +209,44 @@ instance Defaultable (Maybe a) where
   -- | The default for @Maybe a@ is @Nothing@.
   defaultFor _ = pure Nothing
 
-instance forall m. (Applicative m) => HasResolver m Int32 where
+instance forall e m. (AsGraphQLError e, MonadError e m) => HasResolver e m Int32 where
   type Handler m Int32 = m Int32
   resolve handler Nothing = map (ok . toValue) handler
   resolve _ (Just ss) = throwE (SubSelectionOnLeaf ss)
 
-instance forall m. (Applicative m) => HasResolver m Double where
+instance forall e m. (AsGraphQLError e, MonadError e m) => HasResolver e m Double where
   type Handler m Double = m Double
   resolve handler Nothing =  map (ok . toValue) handler
   resolve _ (Just ss) = throwE (SubSelectionOnLeaf ss)
 
-instance forall m. (Applicative m) => HasResolver m Text where
+instance forall e m. (AsGraphQLError e, MonadError e m) => HasResolver e m Text where
   type Handler m Text = m Text
   resolve handler Nothing =  map (ok . toValue) handler
   resolve _ (Just ss) = throwE (SubSelectionOnLeaf ss)
 
-instance forall m. (Applicative m) => HasResolver m Bool where
+instance forall e m. (AsGraphQLError e, MonadError e m) => HasResolver e m Bool where
   type Handler m Bool = m Bool
   resolve handler Nothing =  map (ok . toValue) handler
   resolve _ (Just ss) = throwE (SubSelectionOnLeaf ss)
 
-instance forall m hg. (Monad m, Applicative m, HasResolver m hg) => HasResolver m (API.List hg) where
+instance forall e m hg. (AsGraphQLError e, MonadError e m, HasResolver e m hg) => HasResolver e m (API.List hg) where
   type Handler m (API.List hg) = m [Handler m hg]
   resolve handler selectionSet = do
     h <- handler
-    let a = traverse (flip (resolve @m @hg) selectionSet) h
+    let a = traverse (flip (resolve @e @m @hg) selectionSet) h
     map aggregateResults a
 
-instance forall m ksN enum. (Applicative m, API.GraphQLEnum enum) => HasResolver m (API.Enum ksN enum) where
+instance forall e m ksN enum. (AsGraphQLError e, MonadError e m, API.GraphQLEnum enum) => HasResolver e m (API.Enum ksN enum) where
   type Handler m (API.Enum ksN enum) = m enum
   resolve handler Nothing = map (ok . GValue.ValueEnum . API.enumToValue) handler
   resolve _ (Just ss) = throwE (SubSelectionOnLeaf ss)
 
-instance forall m hg. (HasResolver m hg, Monad m) => HasResolver m (Maybe hg) where
+instance forall e m hg. (AsGraphQLError e, MonadError e m, HasResolver e m hg) => HasResolver e m (Maybe hg) where
   type Handler m (Maybe hg) = m (Maybe (Handler m hg))
   resolve handler selectionSet = do
     result <- handler
     case result of
-      Just x -> resolve @m @hg (x :: Handler m hg) selectionSet
+      Just x -> resolve @e @m @hg (x :: Handler m hg) selectionSet
       Nothing -> (pure . ok) GValue.ValueNull
 
 -- TODO: A parametrized `Result` is really not a good way to handle the
@@ -238,8 +268,8 @@ type family FieldName (a :: Type) = (r :: Symbol) where
   FieldName (EnumArgument a f) = FieldName f
   FieldName x = TypeError ('Text "Unexpected branch in FieldName type family. Please file a bug!" ':<>: 'ShowType x)
 
-resolveField :: forall dispatchType (m :: Type -> Type).
-  (BuildFieldResolver m dispatchType, Monad m, KnownSymbol (FieldName dispatchType))
+resolveField :: forall dispatchType e (m :: Type -> Type).
+  (AsGraphQLError e, BuildFieldResolver m dispatchType, MonadError e m, KnownSymbol (FieldName dispatchType))
   => FieldHandler m dispatchType -> m ResolveFieldResult -> Field Value -> m ResolveFieldResult
 resolveField handler nextHandler field =
   -- check name before
@@ -250,7 +280,7 @@ resolveField handler nextHandler field =
           case buildFieldResolver @m @dispatchType handler field of
             Left err -> pure (Result [err] (Just GValue.ValueNull))
             Right resolver -> do
-              Result errs value <- resolver
+              Result errs value <- resolver `catchError` (throwE . asGraphQLError)
               pure (Result errs (Just value))
       | otherwise -> nextHandler
 
@@ -277,11 +307,11 @@ type family FieldHandler (m :: Type -> Type) (a :: Type) = (r :: Type) where
 class BuildFieldResolver m fieldResolverType where
   buildFieldResolver :: FieldHandler m fieldResolverType -> Field Value -> Either ResolverError (m (Result Value))
 
-instance forall ksG t m.
-  ( KnownSymbol ksG, HasResolver m t, HasAnnotatedType t, Monad m
+instance forall e ksG t m.
+  ( AsGraphQLError e, KnownSymbol ksG, HasResolver e m t, HasAnnotatedType t, MonadError e m
   ) => BuildFieldResolver m (JustHandler (API.Field ksG t)) where
   buildFieldResolver handler field = do
-    pure (resolve @m @t handler (getSubSelectionSet field))
+    pure (resolve @e @m @t handler (getSubSelectionSet field))
 
 instance forall ksH t f m.
   ( KnownSymbol ksH
@@ -350,45 +380,49 @@ class RunFields m a where
   -- within the handler.
   runFields :: RunFieldsHandler m a -> Field Value -> m ResolveFieldResult
 
-instance forall f fs m dispatchType.
-         ( BuildFieldResolver m dispatchType
+instance forall f fs e m dispatchType.
+         ( AsGraphQLError e
+         , BuildFieldResolver m dispatchType
          , dispatchType ~ FieldResolverDispatchType f
          , RunFields m fs
          , KnownSymbol (FieldName dispatchType)
-         , Monad m
+         , MonadError e m
          ) => RunFields m (f :<> fs) where
   runFields (handler :<> nextHandlers) field =
-    resolveField @dispatchType @m handler nextHandler field
+    resolveField @dispatchType @e @m handler nextHandler field
     where
       nextHandler = runFields @m @fs nextHandlers field
 
-instance forall ksM t m dispatchType.
-         ( BuildFieldResolver m dispatchType
+instance forall ksM t e m dispatchType.
+         ( AsGraphQLError e
+         , BuildFieldResolver m dispatchType
          , KnownSymbol ksM
          , dispatchType ~ FieldResolverDispatchType (API.Field ksM t)
-         , Monad m
+         , MonadError e m
          ) => RunFields m (API.Field ksM t) where
   runFields handler field =
-    resolveField @dispatchType @m handler nextHandler field
+    resolveField @dispatchType @e @m handler nextHandler field
     where
       nextHandler = pure (Result [FieldNotFoundError (getName field)] Nothing)
 
-instance forall m a b dispatchType.
-         ( BuildFieldResolver m dispatchType
+instance forall e m a b dispatchType.
+         ( AsGraphQLError e
+         , BuildFieldResolver m dispatchType
          , dispatchType ~ FieldResolverDispatchType (a :> b)
          , KnownSymbol (FieldName dispatchType)
-         , Monad m
+         , MonadError e m
          ) => RunFields m (a :> b) where
   runFields handler field =
-    resolveField @dispatchType @m handler nextHandler field
+    resolveField @dispatchType @e @m handler nextHandler field
     where
       nextHandler = pure (Result [FieldNotFoundError (getName field)] Nothing)
 
-instance forall typeName interfaces fields m.
-         ( RunFields m (RunFieldsType m fields)
+instance forall typeName interfaces fields e m.
+         ( AsGraphQLError e
+         , RunFields m (RunFieldsType m fields)
          , API.HasObjectDefinition (API.Object typeName interfaces fields)
-         , Monad m
-         ) => HasResolver m (API.Object typeName interfaces fields) where
+         , MonadError e m
+         ) => HasResolver e m (API.Object typeName interfaces fields) where
   type Handler m (API.Object typeName interfaces fields) = m (RunFieldsHandler m (RunFieldsType m fields))
 
   resolve _ Nothing = throwE MissingSelectionSet
@@ -458,8 +492,9 @@ data DynamicUnionValue (union :: Type) (m :: Type -> Type) = DynamicUnionValue {
 class RunUnion m union objects where
   runUnion :: DynamicUnionValue union m -> SelectionSetByType Value -> m (Result Value)
 
-instance forall m union objects name interfaces fields.
-  ( Monad m
+instance forall e m union objects name interfaces fields.
+  ( AsGraphQLError e
+  , MonadError e m
   , KnownSymbol name
   , TypeIndex m (API.Object name interfaces fields) union ~ Handler m (API.Object name interfaces fields)
   , RunFields m (RunFieldsType m fields)
@@ -468,7 +503,7 @@ instance forall m union objects name interfaces fields.
   ) => RunUnion m union (API.Object name interfaces fields:objects) where
   runUnion duv selectionSet =
     case extractUnionValue @(API.Object name interfaces fields) @union @m duv of
-      Just handler -> resolve @m @(API.Object name interfaces fields) handler (Just selectionSet)
+      Just handler -> resolve @e @m @(API.Object name interfaces fields) handler (Just selectionSet)
       Nothing -> runUnion @m @union @objects duv selectionSet
 
 -- AFAICT it should not be possible to ever hit the empty case because
@@ -482,11 +517,12 @@ instance forall m union. RunUnion m union '[] where
   runUnion (DynamicUnionValue label _) selection =
     panic ("Unexpected branch in runUnion, got " <> show selection <> " for label " <> label <> ". Please file a bug.")
 
-instance forall m unionName objects.
-  ( Monad m
+instance forall e m unionName objects.
+  ( AsGraphQLError e
+  , MonadError e m
   , KnownSymbol unionName
   , RunUnion m (API.Union unionName objects) objects
-  ) => HasResolver m (API.Union unionName objects) where
+  ) => HasResolver e m (API.Union unionName objects) where
   type Handler m (API.Union unionName objects) = m (DynamicUnionValue (API.Union unionName objects) m)
   resolve _ Nothing = throwE MissingSelectionSet
   resolve mHandler (Just selectionSet) = do

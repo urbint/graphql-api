@@ -81,13 +81,19 @@ instance ToJSON Response where
 
 type Errors = NonEmpty Error
 
-data Error = Error Text [Location] deriving (Eq, Ord, Show)
+data Error = Error Text [Location] Int32 deriving (Eq, Ord, Show)
 
 instance ToValue Error where
-  toValue (Error message []) = unsafeMakeObject [("message", toValue message)]
-  toValue (Error message locations) = unsafeMakeObject [("message", toValue message)
-                                                       ,("locations", toValue locations)
-                                                       ]
+  toValue (Error message [] status) =
+    unsafeMakeObject [ ("message", toValue message)
+                     , ("statusCode", toValue status)
+                     ]
+
+  toValue (Error message locations status) =
+    unsafeMakeObject [ ("message", toValue message)
+                     , ("locations", toValue locations)
+                     , ("statusCode", toValue status)
+                     ]
 
 -- | Make a list of errors containing a single error.
 singleError :: GraphQLError e => e -> Errors
@@ -102,6 +108,7 @@ instance ToValue Location where
                                                     ,("column", toValue column)
                                                     ]
 
+
 -- | An error that arises while processing a GraphQL query.
 class GraphQLError e where
   -- | Represent an error as human-readable text, primarily intended for
@@ -113,7 +120,7 @@ class GraphQLError e where
   -- series of locations within a GraphQL query document. Default
   -- implementation calls 'formatError' and provides no locations.
   toError :: e -> Error
-  toError e = Error (formatError e) []
+  toError e = Error (formatError e) [] 500
 
 -- Defined here to avoid circular dependency.
 instance GraphQLError NameError where

@@ -1,5 +1,8 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE TypeApplications #-}
+
 -- | Tests that span the entire system.
 --
 -- These tests function both as examples of how to use the API, as well as
@@ -13,7 +16,7 @@ import qualified Data.Map as Map
 import GraphQL (makeSchema, compileQuery, executeQuery, interpretAnonymousQuery, interpretQuery)
 import GraphQL.API (Object, Field)
 import GraphQL.Internal.Syntax.AST (Variable(..))
-import GraphQL.Resolver ((:<>)(..), Handler)
+import GraphQL.Resolver ((:<>)(..), Handler, AsGraphQLError(..), ResolverError(..))
 import GraphQL.Value (makeName)
 import GraphQL.Value.ToValue (ToValue(..))
 import Test.Tasty (TestTree)
@@ -57,9 +60,10 @@ isHouseTrained dog Nothing = houseTrainedAtHome dog || houseTrainedElsewhere dog
 isHouseTrained dog (Just False) = houseTrainedAtHome dog
 isHouseTrained dog (Just True) = houseTrainedElsewhere dog
 
+
 -- | Present 'ServerDog' for GraphQL.
-viewServerDog :: ServerDog -> Handler IO Dog
-viewServerDog dog@(ServerDog{..}) = pure $
+viewServerDog :: (AsGraphQLError e, MonadError e m) => ServerDog -> Handler m Dog
+viewServerDog dog@ServerDog{..} = pure $
   pure name :<>
   pure (fmap pure nickname) :<>
   pure barkVolume :<>
@@ -80,28 +84,37 @@ mortgage = ServerDog
            }
 
 -- | Our server's internal representation of a 'Human'.
-data ServerHuman = ServerHuman Text deriving (Eq, Ord, Show)
+newtype ServerHuman = ServerHuman Text deriving (Eq, Ord, Show)
 
 -- | Present a 'ServerHuman' as a GraphQL 'Human'.
-viewServerHuman :: ServerHuman -> Handler IO Human
+viewServerHuman ::(AsGraphQLError e, MonadError e m) => ServerHuman -> Handler m Human
 viewServerHuman (ServerHuman name) = pure (pure name)
 
 -- | It me.
 jml :: ServerHuman
 jml = ServerHuman "jml"
 
+-- | Dummy Error
+newtype CustomError
+  = MyError Text
+
+instance AsGraphQLError CustomError where
+  asGraphQLError (MyError _) = HandlerError "Unknown Error" 500
+
+
 tests :: IO TestTree
 tests = testSpec "End-to-end tests" $ do
   describe "interpretAnonymousQuery" $ do
     it "Handles the simplest possible valid query" $ do
-      let root = pure (viewServerDog mortgage)
+      let root :: (MonadError CustomError m) => Handler m QueryRoot
+          root = pure (viewServerDog mortgage)
       let query = [r|{
                       dog {
                         name
                       }
                     }
                    |]
-      response <- interpretAnonymousQuery @QueryRoot root query
+      Right response <- runExceptT (interpretAnonymousQuery @QueryRoot root query)
       let expected =
             object
             [ "data" .= object
@@ -112,7 +125,8 @@ tests = testSpec "End-to-end tests" $ do
             ]
       toJSON (toValue response) `shouldBe` expected
     it "Handles more than one field" $ do
-      let root = pure (viewServerDog mortgage)
+      let root :: (MonadError CustomError m) => Handler m QueryRoot
+          root = pure (viewServerDog mortgage)
       let query = [r|{
                       dog {
                         name
@@ -120,7 +134,7 @@ tests = testSpec "End-to-end tests" $ do
                       }
                     }
                    |]
-      response <- interpretAnonymousQuery @QueryRoot root query
+      Right response <- runExceptT (interpretAnonymousQuery @QueryRoot root query)
       let expected =
             object
             [ "data" .= object
@@ -132,7 +146,8 @@ tests = testSpec "End-to-end tests" $ do
             ]
       toJSON (toValue response) `shouldBe` expected
     it "Handles nested queries" $ do
-      let root = pure (viewServerDog mortgage)
+      let root :: (MonadError CustomError m) => Handler m QueryRoot
+          root = pure (viewServerDog mortgage)
       let query = [r|{
                       dog {
                         name
@@ -142,7 +157,7 @@ tests = testSpec "End-to-end tests" $ do
                       }
                     }
                    |]
-      response <- interpretAnonymousQuery @QueryRoot root query
+      Right response <- runExceptT (interpretAnonymousQuery @QueryRoot root query)
       let expected =
             object
             [ "data" .= object
@@ -156,7 +171,8 @@ tests = testSpec "End-to-end tests" $ do
             ]
       toJSON (toValue response) `shouldBe` expected
     it "It aliases fields" $ do
-      let root = pure (viewServerDog mortgage)
+      let root :: (MonadError CustomError m) => Handler m QueryRoot
+          root = pure (viewServerDog mortgage)
       let query = [r|{
                       dog {
                         name
@@ -166,7 +182,7 @@ tests = testSpec "End-to-end tests" $ do
                       }
                     }
                    |]
-      response <- interpretAnonymousQuery @QueryRoot root query
+      Right response <- runExceptT (interpretAnonymousQuery @QueryRoot root query)
       let expected =
             object
             [ "data" .= object
@@ -180,7 +196,8 @@ tests = testSpec "End-to-end tests" $ do
             ]
       toJSON (toValue response) `shouldBe` expected
     it "Passes arguments to functions" $ do
-      let root = pure (viewServerDog mortgage)
+      let root :: (MonadError CustomError m) => Handler m QueryRoot
+          root = pure (viewServerDog mortgage)
       let query = [r|{
                       dog {
                         name
@@ -188,7 +205,7 @@ tests = testSpec "End-to-end tests" $ do
                       }
                      }
                     |]
-      response <- interpretAnonymousQuery @QueryRoot root query
+      Right response <- runExceptT (interpretAnonymousQuery @QueryRoot root query)
       let expected =
             object
             [ "data" .= object
@@ -200,7 +217,8 @@ tests = testSpec "End-to-end tests" $ do
             ]
       toJSON (toValue response) `shouldBe` expected
     it "Handles fairly complex queries" $ do
-      let root = pure (viewServerDog mortgage)
+      let root :: (MonadError CustomError m) => Handler m QueryRoot
+          root = pure (viewServerDog mortgage)
       -- TODO: jml would like to put some union checks in here, but we don't
       -- have any unions reachable from Dog!
       let query = [r|{
@@ -221,7 +239,7 @@ tests = testSpec "End-to-end tests" $ do
                       }
                      }
                     |]
-      response <- interpretAnonymousQuery @QueryRoot root query
+      Right response <- runExceptT (interpretAnonymousQuery @QueryRoot root query)
       let expected =
             object
             [ "data" .= object
@@ -236,14 +254,15 @@ tests = testSpec "End-to-end tests" $ do
       toJSON (toValue response) `shouldBe` expected
   describe "interpretQuery" $ do
     it "Handles the simplest named query" $ do
-      let root = pure (viewServerDog mortgage)
+      let root :: (MonadError CustomError m) => Handler m QueryRoot
+          root = pure (viewServerDog mortgage)
       let query = [r|query myQuery {
                       dog {
                         name
                       }
                     }
                    |]
-      response <- interpretQuery @QueryRoot root query Nothing mempty
+      Right response <- runExceptT (interpretQuery @QueryRoot root query Nothing mempty)
       let expected =
             object
             [ "data" .= object
@@ -254,7 +273,8 @@ tests = testSpec "End-to-end tests" $ do
             ]
       toJSON (toValue response) `shouldBe` expected
     it "Allows calling query by name" $ do
-      let root = pure (viewServerDog mortgage)
+      let root :: (MonadError CustomError m) => Handler m QueryRoot
+          root = pure (viewServerDog mortgage)
       let query = [r|query myQuery {
                       dog {
                         name
@@ -262,7 +282,7 @@ tests = testSpec "End-to-end tests" $ do
                     }
                    |]
       let Right name = makeName "myQuery"
-      response <- interpretQuery @QueryRoot root query (Just name) mempty
+      Right response <- runExceptT (interpretQuery @QueryRoot root query (Just name) mempty)
       let expected =
             object
             [ "data" .= object
@@ -273,7 +293,8 @@ tests = testSpec "End-to-end tests" $ do
             ]
       toJSON (toValue response) `shouldBe` expected
     describe "Handles variables" $ do
-      let root = pure (viewServerDog mortgage)
+      let root :: (MonadError CustomError m) => Handler m QueryRoot
+          root = pure (viewServerDog mortgage)
       let Right schema = makeSchema @Dog
       let Right query =
             compileQuery schema
@@ -285,7 +306,7 @@ tests = testSpec "End-to-end tests" $ do
                }
               |]
       it "Errors when no variables provided" $ do
-        response <- executeQuery  @QueryRoot root query Nothing mempty
+        Right response <- runExceptT (executeQuery @QueryRoot root query Nothing mempty)
         let expected =
               object
               [ "data" .= object
@@ -302,6 +323,7 @@ tests = testSpec "End-to-end tests" $ do
                   -- actual Show which remains extremely useful for debugging)
                   -- and use that when including values in error messages.
                   [ "message" .= ("Could not coerce Name {unName = \"dogCommand\"} to valid value: ValueScalar' ConstNull not an enum: [Right (Name {unName = \"Sit\"}),Right (Name {unName = \"Down\"}),Right (Name {unName = \"Heel\"})]" :: Text)
+                  , "statusCode" .= (400 :: Int32)
                   ]
                 ]
               ]
@@ -315,7 +337,7 @@ tests = testSpec "End-to-end tests" $ do
         -- <https://github.com/jml/graphql-api/issues/96>
         let Right varName = makeName "whichCommand"
         let vars = Map.singleton (Variable varName) (toValue Sit)
-        response <- executeQuery  @QueryRoot root query Nothing vars
+        Right response <- runExceptT (executeQuery @QueryRoot root query Nothing vars)
         let expected =
               object
               [ "data" .= object
