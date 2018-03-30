@@ -1,5 +1,6 @@
-{-# LANGUAGE DataKinds   #-}
-{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE DataKinds        #-}
+{-# LANGUAGE QuasiQuotes      #-}
+{-# LANGUAGE TypeApplications #-}
 
 module IntrospectionTests (tests) where
 
@@ -53,7 +54,7 @@ isHouseTrained dog (Just True) = houseTrainedElsewhere dog
 
 -- | Present 'ServerDog' for GraphQL.
 viewServerDog :: ServerDog -> Handler IO Dog
-viewServerDog dog@(ServerDog{..}) = pure $
+viewServerDog dog@ServerDog{..} = pure $
   pure name :<>
   pure (fmap pure nickname) :<>
   pure barkVolume :<>
@@ -74,7 +75,7 @@ mortgage = ServerDog
            }
 
 -- | Our server's internal representation of a 'Human'.
-data ServerHuman = ServerHuman Text deriving (Eq, Ord, Show)
+newtype ServerHuman = ServerHuman Text deriving (Eq, Ord, Show)
 
 -- | Present a 'ServerHuman' as a GraphQL 'Human'.
 viewServerHuman :: ServerHuman -> Handler IO Human
@@ -83,7 +84,6 @@ viewServerHuman (ServerHuman name) = pure (pure name)
 -- | It me.
 jml :: ServerHuman
 jml = ServerHuman "jml"
-
 
 tests :: IO TestTree
 tests = testSpec "Introspection" $ do
@@ -94,12 +94,12 @@ tests = testSpec "Introspection" $ do
                       __typename
                     }
                   }|]
-    response <- interpretAnonymousQuery @QueryRoot root query
-    let expected =
-          object
+        expected = object
           [ "data" .= object
             [ "dog" .= object
               [ "__typename" .= ("Dog" :: Text) ]]]
-    toJSON (toValue response) `shouldBe` expected
 
+    response <- interpretAnonymousQuery @QueryRoot root query
+
+    toJSON (toValue response) `shouldBe` expected
 

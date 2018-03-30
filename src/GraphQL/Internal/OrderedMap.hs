@@ -1,5 +1,7 @@
 {-# LANGUAGE RankNTypes   #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE LambdaCase   #-}
+{-# LANGUAGE TypeFamilies #-}
 -- | Data structure for mapping keys to values while preserving order of appearance.
 --
 -- There are many cases in GraphQL where we want to have a map from names to
@@ -60,8 +62,10 @@ module GraphQL.Internal.OrderedMap
   , genOrderedMap
   ) where
 
-import Protolude hiding (empty, toList)
+import Protolude hiding (empty, toList, (<&>))
 
+import Control.Lens
+import qualified Data.List as L
 import qualified Data.Map as Map
 import Test.QuickCheck (Arbitrary(..), Gen, listOf)
 
@@ -94,6 +98,32 @@ instance Functor (OrderedMap key) where
 
 instance (Arbitrary key, Arbitrary value, Ord key) => Arbitrary (OrderedMap key value) where
   arbitrary = genOrderedMap arbitrary arbitrary
+
+
+-- | Impls Index, IxValue, Ixed, and At for OrderedMap.
+
+type instance Index (OrderedMap k v) = k
+
+type instance IxValue (OrderedMap k v) = v
+
+instance (Ord k) => Ixed (OrderedMap k v) where
+  ix k f m = case lookup k m of
+      Nothing -> pure m
+      Just v -> (\v' -> insert' k v' m) <$> f v
+    where insert' k' v m' = m'
+            { toMap = Map.insert k' v $ toMap m'
+            }
+
+instance (Ord k) => At (OrderedMap k v) where
+  at k f m = f look <&> \case
+      Nothing -> maybe m (const removeKey) look
+      Just v -> setVal v
+    where
+      look = lookup k m
+      removeKey = m { toMap = Map.delete k $ toMap m
+                    , keys = L.delete k $ keys m
+                    }
+      setVal v = m { toMap = Map.insert k v $ toMap m }
 
 -- | Generate an ordered map with the given key & value generators.
 genOrderedMap :: forall key value. Ord key => Gen key -> Gen value -> Gen (OrderedMap key value)

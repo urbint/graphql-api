@@ -25,6 +25,7 @@ dependencies:
   - transformers
   - attoparsec
   - mtl
+  - lens
 
 library:
   source-dirs: src

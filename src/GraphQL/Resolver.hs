@@ -127,6 +127,10 @@ class AsGraphQLError e where
 instance AsGraphQLError ResolverError where
   asGraphQLError err = err
 
+instance AsGraphQLError IOException where
+  asGraphQLError _ = UncaughtHandlerError
+
+
 -- | Object field separation operator.
 --
 -- Use this to provide handlers for fields of an object.
