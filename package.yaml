@@ -51,6 +51,21 @@ tests:
       - tasty
       - tasty-hspec
       - directory
+      - doctest
+    other-modules:
+      - ASTTests
+      - EndToEndTests
+      - EnumTests
+      - ExampleSchema
+      - Examples.InputObject
+      - Examples.UnionExample
+      - IntrospectionTests
+      - OrderedMapTests
+      - ResolverTests
+      - SchemaTests
+      - ValidationTests
+      - ValueTests
+
 
   graphql-api-doctests:
     main: Doctests.hs
@@ -58,6 +73,7 @@ tests:
     source-dirs: tests
     dependencies:
       - doctest
+    other-modules: []
 
 benchmarks:
   criterion:
