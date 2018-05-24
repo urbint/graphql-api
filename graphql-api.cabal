@@ -1,8 +1,8 @@
--- This file has been generated from package.yaml by hpack version 0.20.0.
+-- This file has been generated from package.yaml by hpack version 0.28.2.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: de70417840e8f6e28f1e79a925e31212e0b625d88c0ad623fa7c3b05156085ae
+-- hash: 4f25325ce3eaeebbf7ef4a8ae8460a62a349403c5d08502c86134c9ca8c65010
 
 name:           graphql-api
 version:        0.2.0
@@ -81,26 +81,24 @@ test-suite graphql-api-doctests
     , mtl
     , protolude >=0.2
     , transformers
-  other-modules:
-      ASTTests
-      EndToEndTests
-      EnumTests
-      Examples.InputObject
-      Examples.UnionExample
-      ExampleSchema
-      IntrospectionTests
-      OrderedMapTests
-      ResolverTests
-      SchemaTests
-      Spec
-      ValidationTests
-      ValueTests
-      Paths_graphql_api
   default-language: Haskell2010
 
 test-suite graphql-api-tests
   type: exitcode-stdio-1.0
   main-is: Spec.hs
+  other-modules:
+      ASTTests
+      EndToEndTests
+      EnumTests
+      ExampleSchema
+      Examples.InputObject
+      Examples.UnionExample
+      IntrospectionTests
+      OrderedMapTests
+      ResolverTests
+      SchemaTests
+      ValidationTests
+      ValueTests
   hs-source-dirs:
       tests
   default-extensions: NoImplicitPrelude OverloadedStrings RecordWildCards TypeApplications
@@ -112,6 +110,7 @@ test-suite graphql-api-tests
     , base >=4.9 && <5
     , containers
     , directory
+    , doctest
     , exceptions
     , graphql-api
     , hspec
@@ -122,21 +121,6 @@ test-suite graphql-api-tests
     , tasty
     , tasty-hspec
     , transformers
-  other-modules:
-      ASTTests
-      Doctests
-      EndToEndTests
-      EnumTests
-      Examples.InputObject
-      Examples.UnionExample
-      ExampleSchema
-      IntrospectionTests
-      OrderedMapTests
-      ResolverTests
-      SchemaTests
-      ValidationTests
-      ValueTests
-      Paths_graphql_api
   default-language: Haskell2010
 
 benchmark criterion
