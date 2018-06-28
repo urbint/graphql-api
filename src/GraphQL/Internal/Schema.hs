@@ -35,7 +35,7 @@ module GraphQL.Internal.Schema
   , DefinesTypes(..)
   , doesFragmentTypeApply
   -- * The schema
-  , Schema
+  , Schema(..)
   , makeSchema
   , lookupType
   ) where
@@ -137,8 +137,7 @@ instance DefinesTypes TypeDefinition where
       TypeDefinitionScalar x  -> getDefinedTypes x
       TypeDefinitionEnum x -> getDefinedTypes x
       TypeDefinitionInputObject _ -> mempty
-      TypeDefinitionTypeExtension _ ->
-        panic "TODO: we should remove the 'extend' behaviour entirely"
+      TypeDefinitionTypeExtension x -> getDefinedTypes x
 
 data ObjectTypeDefinition = ObjectTypeDefinition Name Interfaces (NonEmptyList FieldDefinition)
                             deriving (Eq, Ord, Show)
@@ -151,6 +150,10 @@ instance DefinesTypes ObjectTypeDefinition where
     Map.singleton name (TypeDefinitionObject obj) <>
     foldMap getDefinedTypes interfaces <>
     foldMap getDefinedTypes fields
+
+instance DefinesTypes TypeExtensionDefinition where
+  getDefinedTypes (TypeExtensionDefinition ted) =
+    getDefinedTypes ted
 
 type Interfaces = [InterfaceTypeDefinition]
 

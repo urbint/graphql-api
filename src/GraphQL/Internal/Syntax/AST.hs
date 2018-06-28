@@ -79,10 +79,6 @@ data OperationDefinition
 data Node = Node (Maybe Name) [VariableDefinition] [Directive] SelectionSet
             deriving (Eq,Show)
 
---
-getNodeName :: Node -> Maybe Name
-getNodeName (Node maybeName _ _ _) = maybeName
-
 data VariableDefinition = VariableDefinition Variable Type (Maybe DefaultValue)
                           deriving (Eq,Show)
 
