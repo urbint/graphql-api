@@ -52,7 +52,7 @@ import Protolude hiding (Type)
 import Test.QuickCheck (Arbitrary(..), listOf, oneof)
 
 import GraphQL.Internal.Arbitrary (arbitraryText)
-import GraphQL.Internal.Name (Name)
+import GraphQL.Internal.Name (Name, HasName(..))
 
 -- * Documents
 
@@ -196,6 +196,27 @@ data TypeDefinition = TypeDefinitionObject        ObjectTypeDefinition
 
 data ObjectTypeDefinition = ObjectTypeDefinition Name Interfaces [FieldDefinition]
                             deriving (Eq,Show)
+
+instance HasName ObjectTypeDefinition where
+  getName (ObjectTypeDefinition name _ _) = name
+
+instance HasName InterfaceTypeDefinition where
+  getName (InterfaceTypeDefinition name _ ) = name
+
+instance HasName UnionTypeDefinition where
+  getName (UnionTypeDefinition name _) = name
+
+instance HasName ScalarTypeDefinition where
+  getName (ScalarTypeDefinition name) = name
+
+instance HasName EnumTypeDefinition where
+  getName (EnumTypeDefinition name _) = name
+
+instance HasName InputObjectTypeDefinition where
+  getName (InputObjectTypeDefinition name _) = name
+
+instance HasName TypeExtensionDefinition where
+  getName (TypeExtensionDefinition o) = getName o
 
 type Interfaces = [NamedType]
 
