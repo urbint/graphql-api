@@ -17,6 +17,7 @@ module GraphQL.Internal.Schema
   , ArgumentDefinition(..)
   , EnumValueDefinition(..)
   , EnumTypeDefinition(..)
+  , ScalarTypeDefinition(..)
   , FieldDefinition(..)
   , Interfaces
   , InterfaceTypeDefinition(..)
