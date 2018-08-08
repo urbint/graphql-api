@@ -209,6 +209,8 @@ instance Defaultable Bool
 
 instance Defaultable Text
 
+instance Defaultable [a]
+
 instance Defaultable (Maybe a) where
   -- | The default for @Maybe a@ is @Nothing@.
   defaultFor _ = pure Nothing
