@@ -289,6 +289,9 @@ instance HasAnnotatedInputType Float where
 instance forall t. (HasAnnotatedInputType t) => HasAnnotatedInputType (List t) where
   getAnnotatedInputType = TypeList . ListType <$> getAnnotatedInputType @t
 
+instance forall t. (HasAnnotatedInputType t) => HasAnnotatedInputType [t] where
+  getAnnotatedInputType = TypeList . ListType <$> getAnnotatedInputType @t
+
 instance forall ks enum. (KnownSymbol ks, GraphQLEnum enum) => HasAnnotatedInputType (Enum ks enum) where
   getAnnotatedInputType = do
     let name = nameFromSymbol @ks
